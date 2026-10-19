@@ -1,0 +1,285 @@
+// ============================================================================
+// Admin Panel — Prisma Schema
+// Database-agnostic design (PostgreSQL by default). Swap provider for MySQL
+// or SQLite in local dev by changing `provider` + DATABASE_URL.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth / RBAC core
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  emailVerified     DateTime?
+  image             String?
+  passwordHash      String
+  status            UserStatus @default(ACTIVE)
+  roleId            String
+  role              Role      @relation(fields: [roleId], references: [id])
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  passwordChangedAt DateTime  @default(now())
+  mustChangePassword Boolean  @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime? // soft delete
+
+  sessions   Session[]
+  auditLogs  AuditLog[]
+  notifications Notification[]
+  inviteTokens  InviteToken[]
+
+  @@index([email])
+  @@index([roleId])
+  @@index([deletedAt])
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DISABLED
+}
+
+// Session model used by the NextAuth Prisma adapter (database session strategy).
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  ipAddress    String?
+  userAgent    String?
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g. "Super Admin", "Editor", "Support"
+  description String?
+  isSystem    Boolean  @default(false) // system roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+// Fine-grained permission catalog. Format: "<module>:<action>" e.g. "users:delete"
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  module      String
+  action      String
+  description String?
+
+  roles RolePermission[]
+}
+
+// Explicit join table (rather than an implicit m2m) so we can audit/extend it.
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit / compliance
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String   // e.g. "user.create", "user.delete", "role.update"
+  targetType String?  // e.g. "User", "Role"
+  targetId   String?
+  metadata   Json?    // structured before/after diff, never store secrets here
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  type      NotificationType @default(INFO)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+// ---------------------------------------------------------------------------
+// Invite tokens — single-use, short-lived tokens emailed to new users so
+// they set their own first password instead of an admin choosing one.
+// ---------------------------------------------------------------------------
+
+model InviteToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique // SHA-256 of the raw token — never store the raw token itself
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Shop — products, categories, customers, orders
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  products Product[]
+
+  @@index([deletedAt])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  name           String
+  slug           String        @unique
+  description    String?
+  sku            String?       @unique
+  price          Decimal       @db.Decimal(10, 2)
+  compareAtPrice Decimal?      @db.Decimal(10, 2)
+  stock          Int           @default(0)
+  status         ProductStatus @default(DRAFT)
+  imageUrl       String?
+  categoryId     String?
+  category       Category?     @relation(fields: [categoryId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  phone     String?
+  address   String?
+  city      String?
+  country   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  orders Order[]
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  status      OrderStatus @default(PENDING)
+  subtotal    Decimal     @db.Decimal(10, 2)
+  shipping    Decimal     @default(0) @db.Decimal(10, 2)
+  total       Decimal     @db.Decimal(10, 2)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items OrderItem[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Snapshot of product name/price at time of purchase — so editing a
+// product later never rewrites the historical record of what was sold.
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  nameSnapshot  String
+  priceSnapshot Decimal @db.Decimal(10, 2)
+  quantity      Int
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// System settings — key/value store so modules can be toggled per deployment
+// ---------------------------------------------------------------------------
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+}
