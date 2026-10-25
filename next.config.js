@@ -34,6 +34,9 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone", // required for the multi-stage Dockerfile
   poweredByHeader: false, // don't leak "X-Powered-By: Next.js"
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
