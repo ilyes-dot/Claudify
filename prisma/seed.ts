@@ -131,7 +131,7 @@ async function main() {
       prisma.product.create({
         data: {
           name: "Classic Cotton T-Shirt", slug: "classic-cotton-tshirt", sku: "TS-001",
-          price: 19.99, stock: 120, status: "ACTIVE", categoryId: categories[0].id,
+          price: 19.99, stock: 120, status: "ACTIVE", categoryId: categories[0]?.id ?? "",
           description: "A soft, everyday cotton t-shirt.",
         },
       }),
