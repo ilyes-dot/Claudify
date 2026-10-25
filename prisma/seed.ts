@@ -138,14 +138,14 @@ async function main() {
       prisma.product.create({
         data: {
           name: "Wireless Earbuds", slug: "wireless-earbuds", sku: "EB-002",
-          price: 59.99, compareAtPrice: 79.99, stock: 45, status: "ACTIVE", categoryId: categories[1].id,
+          price: 59.99, compareAtPrice: 79.99, stock: 45, status: "ACTIVE", categoryId: categories[1]!.id,
           description: "Bluetooth earbuds with noise cancellation.",
         },
       }),
       prisma.product.create({
         data: {
           name: "Ceramic Table Lamp", slug: "ceramic-table-lamp", sku: "LP-003",
-          price: 34.5, stock: 8, status: "ACTIVE", categoryId: categories[2].id,
+          price: 34.5, stock: 8, status: "ACTIVE", categoryId: categories[2]!.id,
           description: "Minimalist ceramic lamp for any room.",
         },
       }),
