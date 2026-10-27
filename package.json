@@ -54,5 +54,8 @@
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
     "vitest": "^2.1.1"
+  },
+  "overrides": {
+    "next-themes": "^0.4.4"
   }
 }
